@@ -1,60 +1,71 @@
 <!doctype html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Slideshow del Evento</title>
-<style>
-html, body { height:100%; margin:0; background:#000; }
-#stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-img { max-width:100vw; max-height:100vh; object-fit:contain; border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,.6); }
-.caption { position:fixed; left:20px; bottom:20px; color:#fff; font: 700 16px system-ui; text-shadow:0 1px 3px rgba(0,0,0,.8); opacity:.7; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Slideshow del Evento</title>
+  <style>
+    html, body { height:100%; margin:0; background:#000; }
+    #stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+    img { max-width:100vw; max-height:100vh; object-fit:contain; border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,.6); }
+    .caption { position:fixed; left:20px; bottom:20px; color:#fff; font:700 16px system-ui; text-shadow:0 1px 3px rgba(0,0,0,.8); opacity:.7; }
+  </style>
 </head>
 <body>
-<div id="stage"><img id="photo" alt="" /></div>
-<div class="caption">Fotos en vivo · actualiza cada 10s</div>
-
+  <div id="stage"><img id="photo" alt="Foto del evento" /></div>
+  <div class="caption" id="status">Fotos en vivo · actualiza cada 10s</div>
 
 <script>
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxGzXoGJTAV9n5m0KjVtnYmtCNaJrcjumFe953Nv2Qzd6EdN71IOyIYDWHyD2Vkz-yWBQ/exec'; // <-- misma URL que antes
-const INTERVAL_MS = 5000; // tiempo por foto
-const REFRESH_MS = 10000; // cada cuánto reconsultar la lista de Drive
-
+const INTERVAL_MS = 5000;   // tiempo por foto
+const REFRESH_MS  = 10000;  // cada cuánto reconsultar la lista
 
 let items = [];
 let idx = 0;
 const img = document.getElementById('photo');
+const statusEl = document.getElementById('status');
 
+function urlFor(it) {
+  // Usa la URL que devuelve el backend; si no viene, arma un fallback con el id
+  if (it.viewUrl) return it.viewUrl;
+  if (it.id)     return 'https://drive.google.com/uc?export=view&id=' + encodeURIComponent(it.id);
+  return '';
+}
 
 async function fetchList() {
-try {
-const res = await fetch(SCRIPT_URL + '?mode=list');
-const json = await res.json();
-if (json.ok && Array.isArray(json.items)) {
-items = json.items;
-// reset índice para mostrar las nuevas primero
-idx = 0;
+  try {
+    const res  = await fetch(SCRIPT_URL + '?mode=list', { cache: 'no-store' });
+    const json = await res.json();
+    console.log('Lista:', json);
+    if (json.ok && Array.isArray(json.items)) {
+      items = json.items;
+      idx = 0;
+      if (!items.length) statusEl.textContent = 'Sin fotos aún…';
+    } else {
+      throw new Error(json.error || 'Respuesta inválida');
+    }
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = 'Error cargando lista: ' + e.message;
+  }
 }
-} catch (e) { console.error(e); }
-}
-
 
 function showNext() {
-if (!items.length) return;
-const it = items[idx % items.length];
-img.src = SCRIPT_URL + '?id=' + encodeURIComponent(it.id);
-idx++;
+  if (!items.length) return;
+  const it  = items[idx % items.length];
+  const url = urlFor(it);
+  if (!url) return;
+  // cache-buster por si Drive cachea
+  img.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  idx++;
 }
 
-
 (async function init(){
-await fetchList();
-showNext();
-setInterval(showNext, INTERVAL_MS);
-setInterval(fetchList, REFRESH_MS);
+  await fetchList();
+  showNext();
+  setInterval(showNext,  INTERVAL_MS);
+  setInterval(fetchList, REFRESH_MS);
 })();
 </script>
 </body>
-
 </html>
