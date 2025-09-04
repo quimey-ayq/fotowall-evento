@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Subí tu foto</title>
+<style>
+:root { font-family: system-ui, sans-serif; }
+body { display:flex; min-height:100vh; align-items:center; justify-content:center; background:#111; color:#eee; }
+.card { width:min(520px, 92vw); background:#1b1b1b; padding:24px; border-radius:20px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+h1 { margin:0 0 12px; font-size:1.4rem; }
+.drop { border:2px dashed #444; border-radius:16px; padding:24px; text-align:center; cursor:pointer; }
+.drop.hover { border-color:#888; }
+.preview { margin-top:12px; display:none; }
+img { max-width:100%; border-radius:12px; }
+button { margin-top:14px; width:100%; padding:14px; border-radius:12px; border:0; background:#fff; color:#111; font-weight:700; cursor:pointer; }
+button[disabled] { opacity:.5; cursor:not-allowed; }
+.msg { margin-top:10px; min-height:1.2em; }
+</style>
+</head>
+<body>
+<div class="card">
+<h1>📸 Subí tu foto</h1>
+<p>Elegí una foto (máx 15 MB). Al enviar, ¡aparece en la pantalla del evento!</p>
+
+
+<div id="drop" class="drop">Arrastrá tu imagen acá o hacé clic</div>
+
+
+<div class="preview" id="preview">
+<img id="thumb" alt="Vista previa"/>
+</div>
+
+
+<button id="send" disabled>Enviar foto</button>
+<div class="msg" id="msg"></div>
+</div>
+<script>
+const preview = document.getElementById('preview');
+const sendBtn = document.getElementById('send');
+const msg = document.getElementById('msg');
+let file = null;
+
+
+function pick() {
+const input = document.createElement('input');
+input.type = 'file';
+input.accept = 'image/*';
+input.onchange = () => handleFiles(input.files);
+input.click();
+}
+
+
+function handleFiles(files) {
+if (!files || !files[0]) return;
+const f = files[0];
+if (!f.type.startsWith('image/')) {
+msg.textContent = 'Solo imágenes';
+return;
+}
+if (f.size > 15 * 1024 * 1024) {
+msg.textContent = 'La imagen supera 15 MB';
+return;
+}
+file = f;
+const url = URL.createObjectURL(f);
+thumb.src = url;
+preview.style.display = 'block';
+sendBtn.disabled = false;
+msg.textContent = '';
+}
+
+
+drop.addEventListener('click', pick);
+
+
+drop.addEventListener('dragover', (e)=>{ e.preventDefault(); drop.classList.add('hover'); });
+drop.addEventListener('dragleave', ()=> drop.classList.remove('hover'));
+drop.addEventListener('drop', (e)=>{ e.preventDefault(); drop.classList.remove('hover'); handleFiles(e.dataTransfer.files); });
+
+
+async function toBase64(file) {
+const buf = await file.arrayBuffer();
+// Convertir a Base64 sin prefijo dataURL
+let binary = '';
+const bytes = new Uint8Array(buf);
+const chunk = 0x8000;
+for (let i = 0; i < bytes.length; i += chunk) {
+binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+}
+return btoa(binary);
+}
+
+
+sendBtn.addEventListener('click', async ()=>{
+if (!file) return;
+sendBtn.disabled = true;
+msg.textContent = 'Subiendo...';
+try {
+const dataBase64 = await toBase64(file);
+const payload = { name: file.name || 'foto.jpg', mimeType: file.type || 'image/jpeg', dataBase64 };
+const res = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+const json = await res.json();
+if (json.ok) {
+msg.textContent = '¡Listo! Gracias 🥳';
+preview.style.display = 'none';
+thumb.src = '';
+file = null;
+} else {
+throw new Error(json.error || 'Error desconocido');
+}
+} catch (err) {
+console.error(err);
+msg.textContent = 'Error al subir: ' + err.message;
+} finally {
+sendBtn.disabled = false;
+}
+});
+</script>
+</body>
+</html>
