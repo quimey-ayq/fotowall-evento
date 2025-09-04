@@ -98,7 +98,11 @@ msg.textContent = 'Subiendo...';
 try {
 const dataBase64 = await toBase64(file);
 const payload = { name: file.name || 'foto.jpg', mimeType: file.type || 'image/jpeg', dataBase64 };
-const res = await fetch(SCRIPT_URL, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+const res = await fetch(SCRIPT_URL, {
+  method: 'POST',
+  redirect: 'follow',      // <- importante
+  body: JSON.stringify(payload) // { name, mimeType, dataBase64 }
+});
 const json = await res.json();
 if (json.ok) {
 msg.textContent = '¡Listo! Gracias 🥳';
