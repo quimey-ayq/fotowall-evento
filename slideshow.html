@@ -5,10 +5,23 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Slideshow del Evento</title>
   <style>
-    html, body { height:100%; margin:0; background:#000; }
-    #stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
-    img { max-width:100vw; max-height:100vh; object-fit:contain; border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,.6); }
-    .caption { position:fixed; left:20px; bottom:20px; color:#fff; font:700 16px system-ui; text-shadow:0 1px 3px rgba(0,0,0,.8); opacity:.7; }
+
+  html, body { height:100%; margin:0; background:#000; }
+#stage { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; }
+#deck  { position:relative; width:100vw; height:100vh; }
+.photo {
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  max-width:100vw; max-height:100vh; object-fit:contain;
+  border-radius:16px; box-shadow:0 40px 120px rgba(0,0,0,.6);
+  opacity:0; transition: opacity 700ms ease; /* duración del fade */
+}
+.photo.visible { opacity:1; }
+
+/* Respeta usuarios con “reducir movimiento” */
+@media (prefers-reduced-motion: reduce) {
+  .photo { transition: none; }
+}
+  
   </style>
 </head>
 <body>
@@ -19,16 +32,21 @@
 const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzoeDiNz0CFotSMVhE_t3hxMjyGnULh4gmYMCsGJjAGRQ4eaINJEZrnQRcKCC4CjQxcGA/exec'; // <-- misma que usás en upload.html
 const INTERVAL_MS = 5000;   // tiempo por foto
 const REFRESH_MS  = 120000;  // cada cuánto reconsultar la lista
-
 let items = [];
 let idx = 0;
-const img = document.getElementById('photo');
-const statusEl = document.getElementById('status');
+let active = 'A';
+
+const imgA = document.getElementById('imgA');
+const imgB = document.getElementById('imgB');
+const statusEl = document.getElementById('status'); // si tenés la leyenda
+imgA.referrerPolicy = 'no-referrer';
+imgB.referrerPolicy = 'no-referrer';
 
 function urlFor(it) {
-  // Usa la URL que devuelve el backend; si no viene, arma un fallback con el id
+  // Si tu backend ya manda viewUrl (lh3.googleusercontent.com), úsalo:
   if (it.viewUrl) return it.viewUrl;
-  if (it.id)     return 'https://drive.google.com/uc?export=view&id=' + encodeURIComponent(it.id);
+  // Fallback al id:
+  if (it.id) return 'https://lh3.googleusercontent.com/d/' + it.id + '=w2000';
   return '';
 }
 
@@ -36,33 +54,60 @@ async function fetchList() {
   try {
     const res  = await fetch(SCRIPT_URL + '?mode=list', { cache: 'no-store' });
     const json = await res.json();
-    console.log('Lista:', json);
     if (json.ok && Array.isArray(json.items)) {
       items = json.items;
       idx = 0;
-      if (!items.length) statusEl.textContent = 'Sin fotos aún…';
+      if (!items.length && statusEl) statusEl.textContent = 'Sin fotos aún…';
     } else {
       throw new Error(json.error || 'Respuesta inválida');
     }
   } catch (e) {
     console.error(e);
-    statusEl.textContent = 'Error cargando lista: ' + e.message;
+    if (statusEl) statusEl.textContent = 'Error cargando lista';
   }
+}
+
+function crossfadeTo(url) {
+  const front = active === 'A' ? imgA : imgB;  // la visible
+  const back  = active === 'A' ? imgB : imgA;  // la oculta
+
+  const pre = new Image();
+  pre.referrerPolicy = 'no-referrer';
+  pre.onload = () => {
+    // cache-buster para evitar caches agresivos
+    const bust = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+    back.src = bust;
+
+    // swap de visibilidad en el siguiente frame
+    requestAnimationFrame(() => {
+      back.classList.add('visible');
+      front.classList.remove('visible');
+      active = (active === 'A') ? 'B' : 'A';
+    });
+  };
+  pre.onerror = () => {
+    console.warn('No se pudo cargar la imagen:', url);
+  };
+  pre.src = url;
 }
 
 function showNext() {
   if (!items.length) return;
   const it  = items[idx % items.length];
   const url = urlFor(it);
-  if (!url) return;
-  // cache-buster por si Drive cachea
-  img.src = url + (url.includes('?') ? '&' : '?') + 't=' + Date.now();
+  if (url) crossfadeTo(url);
   idx++;
 }
 
 (async function init(){
   await fetchList();
-  showNext();
+  // Inicial: mostrar la primera sin fade para evitar pantalla en negro
+  if (items.length) {
+    const first = urlFor(items[0]);
+    imgA.src = first + (first.includes('?')?'&':'?') + 't=' + Date.now();
+    imgA.classList.add('visible');
+    active = 'A';
+  }
   setInterval(showNext,  INTERVAL_MS);
   setInterval(fetchList, REFRESH_MS);
 })();
